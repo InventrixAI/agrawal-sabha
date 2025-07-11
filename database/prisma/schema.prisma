@@ -1,0 +1,552 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Authentication
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  phone         String?   @unique
+  password      String
+  isVerified    Boolean   @default(false)
+  verifyToken   String?
+  resetToken    String?
+  role          UserRole  @default(MEMBER)
+  status        UserStatus @default(PENDING)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relationships
+  member        Member?
+  sessions      Session[]
+  notifications Notification[]
+  
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+// Member Management
+model Member {
+  id            String        @id @default(cuid())
+  userId        String        @unique
+  membershipNo  String        @unique
+  firstName     String
+  lastName      String
+  fatherName    String
+  motherName    String?
+  dateOfBirth   DateTime?
+  gender        Gender
+  maritalStatus MaritalStatus @default(SINGLE)
+  gotra         String
+  bloodGroup    String?
+  education     String?
+  occupation    String?
+  firm          String?
+  business      String?
+  locality      String
+  address       Json // Flexible address structure
+  profilePhoto  String?
+  isPublic      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relationships
+  user              User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family            Family?
+  businesses        Business[]
+  matrimonialProfile MatrimonialProfile?
+  eventRegistrations EventRegistration[]
+  bookings          Booking[]
+  payments          Payment[]
+  interests         Interest[]
+  
+  @@map("members")
+}
+
+model Family {
+  id           String   @id @default(cuid())
+  memberId     String   @unique
+  spouseName   String?
+  children     Json?    // Array of children details
+  parents      Json?    // Parent details
+  siblings     Json?    // Sibling details
+  familyPhoto  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  
+  @@map("families")
+}
+
+// Business Directory
+model Business {
+  id          String         @id @default(cuid())
+  memberId    String
+  name        String
+  description String?
+  category    BusinessCategory
+  address     Json
+  phone       String
+  email       String?
+  website     String?
+  logo        String?
+  images      String[]
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  
+  @@map("businesses")
+}
+
+// Matrimonial Services
+model MatrimonialProfile {
+  id              String              @id @default(cuid())
+  memberId        String              @unique
+  isActive        Boolean             @default(true)
+  preferences     Json                // Partner preferences
+  photos          String[]
+  bio             String?
+  height          String?
+  weight          String?
+  complexion      String?
+  manglik         Boolean?
+  diet            DietType?
+  drinking        Boolean?
+  smoking         Boolean?
+  visibility      VisibilityType      @default(MEMBERS_ONLY)
+  contactInfo     Json?               // Contact preferences
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  member          Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sentInterests   Interest[]          @relation("SentInterests")
+  receivedInterests Interest[]        @relation("ReceivedInterests")
+  
+  @@map("matrimonial_profiles")
+}
+
+model Interest {
+  id          String        @id @default(cuid())
+  fromMemberId String
+  toProfileId String
+  status      InterestStatus @default(PENDING)
+  message     String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  fromMember  Member                @relation(fields: [fromMemberId], references: [id], onDelete: Cascade)
+  toProfile   MatrimonialProfile    @relation("ReceivedInterests", fields: [toProfileId], references: [id], onDelete: Cascade)
+  
+  @@unique([fromMemberId, toProfileId])
+  @@map("interests")
+}
+
+// Events & Activities
+model Event {
+  id              String              @id @default(cuid())
+  title           String
+  description     String
+  shortDescription String?
+  category        EventCategory
+  type            EventType           @default(PUBLIC)
+  startDate       DateTime
+  endDate         DateTime?
+  startTime       String?
+  endTime         String?
+  venue           String
+  address         Json?
+  maxCapacity     Int?
+  registrationFee Decimal?            @db.Decimal(10, 2)
+  isRegistrationRequired Boolean      @default(false)
+  registrationDeadline DateTime?
+  images          String[]
+  documents       String[]
+  isActive        Boolean             @default(true)
+  createdBy       String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  registrations   EventRegistration[]
+  gallery         EventGallery[]
+  
+  @@map("events")
+}
+
+model EventRegistration {
+  id         String              @id @default(cuid())
+  eventId    String
+  memberId   String
+  status     RegistrationStatus  @default(REGISTERED)
+  paymentId  String?
+  guestCount Int                 @default(0)
+  notes      String?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  event   Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  member  Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  payment Payment? @relation(fields: [paymentId], references: [id])
+  
+  @@unique([eventId, memberId])
+  @@map("event_registrations")
+}
+
+model EventGallery {
+  id        String      @id @default(cuid())
+  eventId   String
+  type      MediaType
+  url       String
+  caption   String?
+  order     Int         @default(0)
+  createdAt DateTime    @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  @@map("event_gallery")
+}
+
+// News & Content
+model News {
+  id          String      @id @default(cuid())
+  title       String
+  slug        String      @unique
+  content     String
+  excerpt     String?
+  category    NewsCategory
+  image       String?
+  images      String[]
+  isPublished Boolean     @default(false)
+  publishedAt DateTime?
+  tags        String[]
+  views       Int         @default(0)
+  createdBy   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@map("news")
+}
+
+// Gallery
+model Gallery {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  category    GalleryCategory
+  type        MediaType
+  url         String
+  thumbnail   String?
+  order       Int         @default(0)
+  isPublic    Boolean     @default(true)
+  uploadedBy  String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@map("gallery")
+}
+
+// Booking System
+model Booking {
+  id          String        @id @default(cuid())
+  memberId    String
+  type        BookingType
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  startTime   String
+  endTime     String
+  venue       String?
+  guestCount  Int?
+  amount      Decimal       @db.Decimal(10, 2)
+  status      BookingStatus @default(PENDING)
+  paymentId   String?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  member  Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  payment Payment? @relation(fields: [paymentId], references: [id])
+  
+  @@map("bookings")
+}
+
+// Payment System
+model Payment {
+  id              String        @id @default(cuid())
+  memberId        String
+  type            PaymentType
+  amount          Decimal       @db.Decimal(10, 2)
+  currency        String        @default("INR")
+  status          PaymentStatus @default(PENDING)
+  method          PaymentMethod
+  transactionId   String?       @unique
+  gatewayId       String?
+  gatewayResponse Json?
+  description     String?
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  member              Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  eventRegistrations  EventRegistration[]
+  bookings            Booking[]
+  
+  @@map("payments")
+}
+
+// Job Portal
+model Job {
+  id          String     @id @default(cuid())
+  title       String
+  company     String
+  location    String
+  type        JobType
+  category    String
+  description String
+  requirements String?
+  salary      String?
+  experience  String?
+  contactEmail String
+  contactPhone String?
+  isActive    Boolean    @default(true)
+  expiresAt   DateTime
+  postedBy    String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  @@map("jobs")
+}
+
+// Notifications
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("notifications")
+}
+
+// System Settings
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string")
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("settings")
+}
+
+// Enums
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
+enum BusinessCategory {
+  RETAIL
+  WHOLESALE
+  MANUFACTURING
+  SERVICES
+  TECHNOLOGY
+  HEALTHCARE
+  EDUCATION
+  REAL_ESTATE
+  FINANCE
+  FOOD_BEVERAGE
+  TEXTILE
+  JEWELRY
+  AUTOMOBILE
+  CONSTRUCTION
+  OTHER
+}
+
+enum DietType {
+  VEGETARIAN
+  NON_VEGETARIAN
+  VEGAN
+  JAIN
+}
+
+enum VisibilityType {
+  PUBLIC
+  MEMBERS_ONLY
+  PREMIUM_ONLY
+  PRIVATE
+}
+
+enum InterestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+enum EventCategory {
+  CULTURAL
+  RELIGIOUS
+  SOCIAL
+  EDUCATIONAL
+  BUSINESS
+  SPORTS
+  FESTIVAL
+  MEETING
+  OTHER
+}
+
+enum EventType {
+  PUBLIC
+  MEMBERS_ONLY
+  PREMIUM
+  INVITE_ONLY
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  CONFIRMED
+  ATTENDED
+  CANCELLED
+  NO_SHOW
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+}
+
+enum NewsCategory {
+  ANNOUNCEMENT
+  EVENT
+  COMMUNITY
+  ACHIEVEMENT
+  OBITUARY
+  BUSINESS
+  CULTURAL
+  GENERAL
+}
+
+enum GalleryCategory {
+  EVENTS
+  FESTIVALS
+  MEETINGS
+  CULTURAL
+  ACHIEVEMENTS
+  HERITAGE
+  GENERAL
+}
+
+enum BookingType {
+  HALL
+  CONFERENCE_ROOM
+  AUDITORIUM
+  GROUND
+  EQUIPMENT
+  OTHER
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentType {
+  DONATION
+  EVENT_FEE
+  BOOKING_FEE
+  MEMBERSHIP_FEE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  ONLINE
+  CASH
+  CHEQUE
+  BANK_TRANSFER
+  UPI
+  CARD
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  FREELANCE
+  INTERNSHIP
+}
+
+enum NotificationType {
+  SYSTEM
+  EVENT
+  PAYMENT
+  BOOKING
+  MATRIMONIAL
+  BUSINESS
+  NEWS
+  GENERAL
+}
